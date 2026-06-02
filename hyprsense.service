@@ -1,0 +1,16 @@
+[Unit]
+Description=HyprSense — DualSense Gamepad Navigation Daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/hyprsense.py
+ExecReload=/usr/bin/kill -SIGHUP $MAINPID
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical-session.target
