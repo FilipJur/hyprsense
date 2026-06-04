@@ -1,0 +1,35 @@
+#!/bin/bash
+# Toggle on-screen keyboard with HyprSense grab handoff.
+# Bound to R2+Options in HyprSense config.
+# Sends SIGUSR1 to pause HyprSense (release evdev grab),
+# launches gamepad-osk in foreground mode (B exits),
+# sends SIGUSR2 to resume HyprSense when OSK closes.
+
+set -euo pipefail
+
+PID_FILE="$HOME/.local/state/hyprsense.pid"
+SLEEP_GRAB_RELEASE=0.3
+
+# ── Pause HyprSense ────────────────────────────────────────────────────────
+if [ -f "$PID_FILE" ]; then
+    pid=$(cat "$PID_FILE")
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -SIGUSR1 "$pid"
+        sleep "$SLEEP_GRAB_RELEASE"
+    fi
+fi
+
+# ── Launch OSK (foreground: B = exit) ──────────────────────────────────────
+# Use a subshell trap so we always resume HyprSense even if OSK crashes.
+(
+    trap 'exit 0' INT TERM
+    gamepad-osk
+)
+
+# ── Resume HyprSense ───────────────────────────────────────────────────────
+if [ -f "$PID_FILE" ]; then
+    pid=$(cat "$PID_FILE")
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -SIGUSR2 "$pid"
+    fi
+fi

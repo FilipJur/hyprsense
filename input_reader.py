@@ -6,6 +6,7 @@ Reads button/axis events from /dev/input/event* and publishes via asyncio queues
 import asyncio
 import evdev
 from evdev import InputDevice, ecodes, AbsInfo
+import os
 import logging
 
 logger = logging.getLogger("hyprsense")
@@ -101,6 +102,28 @@ class InputReader:
             self._device = None
         logger.info("Input reader stopped")
 
+    def pause(self) -> None:
+        """Release grab so other applications (games) can use the controller.
+
+        The device stays open — events still arrive, but the daemon should
+        drop them while paused. Call resume() to re-acquire exclusive access.
+        """
+        if self._device:
+            try:
+                self._device.ungrab()
+                logger.info("Device grab released (paused)")
+            except OSError as e:
+                logger.warning(f"Failed to ungrab: {e}")
+
+    def resume(self) -> None:
+        """Re-acquire exclusive grab for desktop navigation."""
+        if self._device:
+            try:
+                self._device.grab()
+                logger.info("Device grab re-acquired (resumed)")
+            except OSError as e:
+                logger.warning(f"Failed to grab: {e}")
+
     async def _read_loop(self) -> None:
         """Main async read loop. Feeds events into the queue."""
         loop = asyncio.get_event_loop()
@@ -167,9 +190,45 @@ def enumerate_dualsense(match_name: str = "DualSense",
                         "path": path,
                         "name": dev.name,
                         "phys": dev.phys,
-                        "uniq": info.uniq,
+                        "uniq": dev.uniq,
                     })
             dev.close()
         except (OSError, PermissionError):
             continue
     return devices
+
+
+def find_dualsense_hidraw(match_vendor: str = "054c",
+                          match_product: str = "0ce6") -> str | None:
+    """
+    Find the hidraw device for the DualSense controller.
+    Scans /dev/hidraw* for matching USB VID/PID.
+    Returns path string or None.
+    """
+    import glob
+    vendor_lower = match_vendor.lower()
+    product_lower = match_product.lower()
+    for path in sorted(glob.glob("/dev/hidraw*")):
+        try:
+            with open(f"/sys/class/hidraw/{os.path.basename(path)}/device/uevent") as f:
+                uevent = f.read()
+            has_vendor = f"DRIVER=playstation" in uevent or \
+                         f"MODALIAS=hid:b0005g0001v0000{vendor_lower}p0000{product_lower}" in uevent
+            if has_vendor:
+                return path
+        except OSError:
+            continue
+
+    # Fallback: try each hidraw by writing a known-good report
+    for path in sorted(glob.glob("/dev/hidraw*")):
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_NONBLOCK)
+            report = bytearray(64)
+            report[0] = 0x09  # set player LEDs (harmless probe)
+            report[1] = 0x05
+            os.write(fd, bytes(report))
+            os.close(fd)
+            return path
+        except OSError:
+            continue
+    return None

@@ -41,11 +41,11 @@ class DeviceMonitor:
         if self.preferred_uniq:
             for d in devices:
                 if d["uniq"] == self.preferred_uniq:
-                    logger.info(f"Found preferred device at {d['path']} (uniq={d['uniq']})")
+                    logger.debug(f"Found preferred device at {d['path']} (uniq={d['uniq']})")
                     return d
 
         # Fall back to first available
-        logger.info(f"Found device at {devices[0]['path']} ({devices[0]['name']})")
+        logger.debug(f"Found device at {devices[0]['path']} ({devices[0]['name']})")
         return devices[0]
 
     async def wait_for_device(self, timeout: float = 5.0,

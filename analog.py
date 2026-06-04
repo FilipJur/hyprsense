@@ -79,7 +79,13 @@ def stick_to_direction(x: int, y: int, center: int = 128,
 
 
 class TriggerState:
-    """Tracks L2/R2 trigger state with hysteresis."""
+    """Tracks L2/R2 trigger state with hysteresis, emitting rising-edge clicks.
+
+    A trigger is "active" when its value exceeds the engage threshold.
+    It stays active until the value drops below the disengage threshold
+    (engage - hysteresis). A "click" fires exactly once per rising edge:
+    the moment the value crosses from below disengage to above engage.
+    """
 
     def __init__(self, threshold: int = 128, hysteresis: int = 10):
         self.threshold = threshold
@@ -90,24 +96,22 @@ class TriggerState:
     def update(self, l2_value: int, r2_value: int) -> tuple[bool, bool]:
         """
         Update trigger states from raw values (0-255).
-        Returns (l2_active, r2_active).
+        Returns (l2_clicked, r2_clicked) — True only on rising edge.
         """
         engage = self.threshold
         disengage = self.threshold - self.hysteresis
 
-        # L2 hysteresis
-        if l2_value >= engage:
-            self._l2_active = True
-        elif l2_value <= disengage:
-            self._l2_active = False
+        # L2: detect rising edge
+        l2_now = l2_value >= engage if not self._l2_active else l2_value > disengage
+        l2_clicked = l2_now and not self._l2_active
+        self._l2_active = l2_now
 
-        # R2 hysteresis
-        if r2_value >= engage:
-            self._r2_active = True
-        elif r2_value <= disengage:
-            self._r2_active = False
+        # R2: detect rising edge
+        r2_now = r2_value >= engage if not self._r2_active else r2_value > disengage
+        r2_clicked = r2_now and not self._r2_active
+        self._r2_active = r2_now
 
-        return self._l2_active, self._r2_active
+        return l2_clicked, r2_clicked
 
     def reset(self) -> None:
         self._l2_active = False

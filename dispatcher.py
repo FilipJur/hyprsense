@@ -12,7 +12,7 @@ logger = logging.getLogger("hyprsense")
 
 async def dispatch(command: str, cooldown: float = 0.0) -> bool:
     """
-    Execute a hyprctl command.
+    Execute a hyprctl dispatch command.
     cooldown: seconds to wait before executing (for rate-limiting).
     Returns True on success.
     """
@@ -23,18 +23,19 @@ async def dispatch(command: str, cooldown: float = 0.0) -> bool:
     expanded = _expand_env(command)
 
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "hyprctl", *expanded.split(),
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+        proc = await asyncio.create_subprocess_shell(
+            f"hyprctl dispatch {expanded}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        await proc.wait()
-        return proc.returncode == 0
-    except FileNotFoundError:
-        logger.error("hyprctl not found in PATH")
-        return False
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            err = stderr.decode(errors="replace").strip()
+            logger.warning(f"hyprctl dispatch {command}: {err}")
+            return False
+        return True
     except OSError as e:
-        logger.error(f"hyprctl exec failed: {e}")
+        logger.error(f"hyprctl dispatch failed: {e}")
         return False
 
 

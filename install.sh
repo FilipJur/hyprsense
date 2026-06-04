@@ -34,6 +34,21 @@ else
     echo "→ Config already exists at ~/.config/hyprsense.yaml (not overwriting)"
 fi
 
+# Install udev rule for DualSense LED sysfs access
+UDEV_RULE="/etc/udev/rules.d/99-dualsense-led.rules"
+if [ -f "$UDEV_RULE" ]; then
+    echo "→ udev rule already installed at $UDEV_RULE"
+else
+    echo "→ Installing udev rule for DualSense LED access (requires sudo)"
+    sudo tee "$UDEV_RULE" > /dev/null << 'UDEV_EOF'
+# Allow users to write to DualSense lightbar LED via hid-playstation sysfs
+SUBSYSTEM=="leds", KERNEL=="input*:rgb:indicator", RUN+="/bin/chmod 666 /sys%p/multi_intensity"
+UDEV_EOF
+    sudo udevadm control --reload-rules
+    sudo udevadm trigger --subsystem-match=leds
+    echo "  udev rule installed. Re-plug controller to apply."
+fi
+
 echo ""
 echo "=== Install complete ==="
 echo "Start the daemon:"

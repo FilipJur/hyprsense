@@ -1,74 +1,67 @@
 """
 Layer state machine for HyprSense.
-Manages transitions between base, L2, and R2 layers.
-Layer priority: L2+R2 > L2 > R2 > base.
+Manages toggle-based transitions between base, L2, and R2 layers.
+Mutually exclusive: L2 and R2 cannot be active simultaneously.
 """
 
 from enum import Enum, auto
-import time
 
 
 class Layer(Enum):
     BASE = auto()
     L2 = auto()
     R2 = auto()
-    L2_R2 = auto()
 
 
 class LayerManager:
-    """State machine for modifier layers with persistence-based debounce.
+    """State machine for modifier layers with toggle-on-rising-edge.
 
-    A layer transition only fires after the target state has been
-    consistently requested for `debounce_ms` milliseconds. This
-    prevents flicker from noisy trigger readings.
+    Each trigger click toggles its layer on or off. Layers are mutually
+    exclusive — activating one deactivates the other. Clicking the
+    currently active trigger returns to base.
     """
 
-    def __init__(self, debounce_ms: int = 50):
-        self.debounce_ms = debounce_ms
+    def __init__(self):
         self._current = Layer.BASE
-        self._pending_target: Layer | None = None
-        self._pending_since: float = 0.0
 
-    def update(self, l2_active: bool, r2_active: bool) -> Layer | None:
+    def update(self, l2_clicked: bool, r2_clicked: bool) -> Layer | None:
         """
-        Process trigger states, apply persistence debounce.
-        Returns new layer if a debounced transition completed, else None.
+        Process trigger click events and update layer state.
+        Returns new Layer if state changed, else None.
         """
-        now = time.monotonic()
-
-        target = Layer.BASE
-        if l2_active and r2_active:
-            target = Layer.L2_R2
-        elif l2_active:
-            target = Layer.L2
-        elif r2_active:
-            target = Layer.R2
-
-        if target == self._current:
-            # Returned to current layer — reset any in-progress debounce
-            self._pending_target = None
+        if l2_clicked and r2_clicked:
+            # Both simultaneously: safe default to BASE
+            if self._current != Layer.BASE:
+                self._current = Layer.BASE
+                return Layer.BASE
             return None
 
-        # Different target than current — check debounce
-        if target != self._pending_target:
-            # New target direction: start debounce timer
-            self._pending_target = target
-            self._pending_since = now
-            return None
+        if l2_clicked:
+            if self._current == Layer.BASE:
+                self._current = Layer.L2
+                return Layer.L2
+            elif self._current == Layer.L2:
+                self._current = Layer.BASE
+                return Layer.BASE
+            else:  # R2
+                self._current = Layer.L2
+                return Layer.L2
 
-        # Same pending target — check if debounce period elapsed
-        if (now - self._pending_since) * 1000.0 < self.debounce_ms:
-            return None
+        if r2_clicked:
+            if self._current == Layer.BASE:
+                self._current = Layer.R2
+                return Layer.R2
+            elif self._current == Layer.R2:
+                self._current = Layer.BASE
+                return Layer.BASE
+            else:  # L2
+                self._current = Layer.R2
+                return Layer.R2
 
-        # Debounce satisfied — commit transition
-        self._current = target
-        self._pending_target = None
-        return target
+        return None
 
     def reset(self) -> None:
         self._current = Layer.BASE
-        self._pending_target = None
-        self._pending_since = 0.0
 
     @property
     def current(self) -> Layer:
@@ -77,4 +70,3 @@ class LayerManager:
     @property
     def layer_name(self) -> str:
         return self._current.name.lower()
-
